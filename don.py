@@ -2,9 +2,21 @@ import csv
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinterdnd2 import TkinterDnD, DND_FILES
+from openpyxl import Workbook
 
 
 files = []
+
+def clean_text(text):
+    return str(text).strip().lower()
+
+
+def parse_amount(amount_text):
+    amount_text = str(amount_text).replace("$", "").replace(",", "").strip()
+    try:
+        return float(amount_text)
+    except:
+        return 0.0
 
 
 def add_files(file_list):
@@ -36,40 +48,55 @@ def merge_files():
         return
 
     output_file = filedialog.asksaveasfilename(
-        defaultextension=".csv",
-        filetypes=[("CSV files", "*.csv")]
+        defaultextension=".xlsx",
+        filetypes=[("Excel files", "*.xlsx")]
     )
 
     if not output_file:
         return
 
     try:
-        with open(output_file, "w", newline="", encoding="utf-8-sig") as out:
-            writer = csv.writer(out)
-            wrote_header = False
+        wb = Workbook()
 
-            for file in files:
-                with open(file, "r", newline="", encoding="utf-8-sig") as f:
-                    reader = csv.reader(f)
+        ws1 = wb.active
+        ws1.title = "Merged"
+        ws1.append(["Transaction Date", "Description", "Category", "Amount"])
 
-                    header = next(reader, None)  # skip first row
-                    if not header:
+        ws2 = wb.create_sheet("Category Totals")
+        ws2.append(["Category", "Total Expense"])
+
+        category_totals = {}
+
+        for file in files:
+            with open(file, "r", newline="", encoding="utf-8-sig") as f:
+                reader = csv.reader(f)
+
+                header = next(reader, None)  # skip header row
+                if not header:
+                    continue
+
+                for row in reader:
+                    if len(row) < 7:
                         continue
 
-                    if not wrote_header:
-                        writer.writerow(header[:4] + header[5:])  # remove column E
-                        wrote_header = True
+                    # Original column E = Type
+                    if "payment" in clean_text(row[4]):
+                        continue
 
-                    for row in reader:
-                        if len(row) < 5:
-                            continue
+                    date = row[0].strip()           # Transaction Date
+                    category = row[3].strip()       # Category
+                    amount = parse_amount(row[5])   # Amount
+                    details = row[2].strip()        # Description
 
-                        if "payment" in row[4].strip().lower():
-                            continue
+                    ws1.append([date, details, category, amount])
 
-                        writer.writerow(row[:4] + row[5:])  # remove column E
+                    category_totals[category] = category_totals.get(category, 0) + amount
 
-        messagebox.showinfo("Done", "Merged successfully.")
+        for category, total in sorted(category_totals.items()):
+            ws2.append([category, total])
+
+        wb.save(output_file)
+        messagebox.showinfo("Done", "Excel file created successfully.")
 
     except Exception as e:
         messagebox.showerror("Error", str(e))
